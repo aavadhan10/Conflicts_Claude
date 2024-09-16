@@ -49,45 +49,63 @@ def create_vector_index(data):
     return faiss_index, tfidf
 
 def extract_conflict_info(data, client_name, faiss_index, tfidf):
-    query_vec = tfidf.transform([client_name]).toarray().astype(np.float32)
-    _, I = faiss_index.search(query_vec, k=50)  # Increased to 50 for more potential matches
+    # First, check for an exact match in the Client Name field
+    exact_match = data[data['Client Name'].str.lower() == client_name.lower()]
     
-    relevant_data = data.iloc[I[0]]
-
-    st.write(f"Debug: Searching for client: {client_name}")
-    st.write(f"Debug: Number of relevant data points: {len(relevant_data)}")
-
-    if relevant_data.empty:
-        st.write("Debug: No relevant data found")
-        return None, None, None
-
-    # Check if the firm has worked with the client before
-    prior_work = relevant_data[
-        relevant_data['Client Name'].str.contains(client_name, case=False, na=False) |
-        relevant_data['Matter'].str.contains(client_name, case=False, na=False) |
-        relevant_data['Matter Description'].str.contains(client_name, case=False, na=False)
-    ]
-    
-    st.write(f"Debug: Number of prior work matches: {len(prior_work)}")
-
-    if not prior_work.empty:
-        client_info = prior_work.iloc[0]
-        conflict_message = f"Conflict found! Scale LLP has previously worked with the client."
+    if not exact_match.empty:
+        client_info = exact_match.iloc[0]
+        conflict_message = f"Conflict found! Scale LLP has previously worked with the client: {client_name}"
         client_details = {
             'Client Name': client_info['Client Name'],
             'Matter': client_info['Matter'],
             'Phone Number': client_info.get('Primary Phone Number', 'N/A'),
             'Email Address': client_info.get('Primary Email Address', 'N/A')
         }
-        st.write("Debug: Client details found:", client_details)
+        st.write("Debug: Exact client match found")
     else:
-        conflict_message = "No direct conflict found with the client."
-        client_details = None
-        st.write("Debug: No client details found")
+        # If no exact match, proceed with the similarity search
+        query_vec = tfidf.transform([client_name]).toarray().astype(np.float32)
+        _, I = faiss_index.search(query_vec, k=50)  # Increased to 50 for more potential matches
+        
+        relevant_data = data.iloc[I[0]]
 
-    # Display the first few rows of relevant_data for debugging
-    st.write("Debug: First few rows of relevant data:")
-    st.write(relevant_data.head().to_string())
+        st.write(f"Debug: Searching for similar clients to: {client_name}")
+        st.write(f"Debug: Number of relevant data points: {len(relevant_data)}")
+
+        if relevant_data.empty:
+            st.write("Debug: No relevant data found")
+            return None, None, None
+
+        # Check if the firm has worked with a similar client before
+        prior_work = relevant_data[
+            relevant_data['Client Name'].str.contains(client_name, case=False, na=False) |
+            relevant_data['Matter'].str.contains(client_name, case=False, na=False) |
+            relevant_data['Matter Description'].str.contains(client_name, case=False, na=False)
+        ]
+        
+        st.write(f"Debug: Number of prior work matches: {len(prior_work)}")
+
+        if not prior_work.empty:
+            client_info = prior_work.iloc[0]
+            conflict_message = f"Potential conflict found! Scale LLP has previously worked with a similar client: {client_info['Client Name']}"
+            client_details = {
+                'Client Name': client_info['Client Name'],
+                'Matter': client_info['Matter'],
+                'Phone Number': client_info.get('Primary Phone Number', 'N/A'),
+                'Email Address': client_info.get('Primary Email Address', 'N/A')
+            }
+            st.write("Debug: Similar client details found:", client_details)
+        else:
+            conflict_message = "No direct conflict found with the client."
+            client_details = None
+            st.write("Debug: No client details found")
+
+    # Use the exact match or relevant data for further analysis
+    analysis_data = exact_match if not exact_match.empty else relevant_data
+
+    # Display the first few rows of analysis_data for debugging
+    st.write("Debug: First few rows of analysis data:")
+    st.write(analysis_data.head().to_string())
 
     # Analyze for potential opponents and business owners
     messages = [
@@ -106,7 +124,7 @@ Pay special attention to matter descriptions containing 'v.' or 'vs' and provide
 
 Here's the relevant data:
 
-{relevant_data.to_string()}
+{analysis_data.to_string()}
 
 Provide your analysis in a structured format that can be easily converted to a table."""}
     ]
@@ -155,7 +173,7 @@ st.write("---")  # Adds a horizontal line for separation
 
 st.write("Enter a client name to perform a conflict check:")
 
-user_input = st.text_input("Client Name:", placeholder="e.g., 'Thomas Adams'")
+user_input = st.text_input("Client Name:", placeholder="e.g., 'Land On Top LLC'")
 
 if user_input:
     progress_bar = st.progress(0)
