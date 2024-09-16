@@ -160,52 +160,37 @@ st.sidebar.metric("Number of Matters Worked with", "10,059")
 st.sidebar.metric("Data Updated from Clio API", "Last Update: 9/14/2024")
 
 # Main content
-st.title("Scale LLP Conflict Check System with Relationship Graph")
+st.title("Scale LLP Conflict Check System")
 
 # Input fields
 client_name = st.text_input("Enter Client's Full Name")
 client_email = st.text_input("Enter Client's Email")
 client_phone = st.text_input("Enter Client's Phone Number")
 
-col1, col2 = st.columns(2)
-with col1:
-    if st.button("Check for Conflict"):
-        if client_name or client_email or client_phone:
-            with st.spinner("Performing conflict check..."):
-                conflict_message, client_details, additional_info = extract_conflict_info(
-                    matters_data, 
-                    client_name=client_name, 
-                    client_email=client_email, 
-                    client_phone=client_phone, 
-                    faiss_index=faiss_index, 
-                    tfidf=tfidf
-                )
-                
-                st.write("### Conflict Check Results:")
-                st.write(conflict_message)
-                
-                if client_details:
-                    st.write("#### Client Details:")
-                    for key, value in client_details.items():
-                        st.write(f"**{key}:** {value}")
-                
-                if additional_info is not None and not additional_info.empty:
-                    st.write("#### Potential Opponents, Direct Opponents, Business Owners, and Acquisition Parties:")
-                    st.table(additional_info)
-                else:
-                    st.write("No potential opponents, direct opponents, business owners, or acquisition parties identified.")
-        else:
-            st.error("Please enter at least one field (Name, Email, or Phone Number)")
-
-with col2:
-    if st.button("Create Relationship Graph"):
-        if client_name or client_email or client_phone:
-            st.write("Creating relationship graph...")
-            # Add your relationship graph creation logic here
-            st.write("Relationship graph functionality not implemented yet.")
-        else:
-            st.error("Please enter at least one field (Name, Email, or Phone Number)")
-
-# Placeholder for relationship graph
-st.header("Relationship Graph")
-st.write("Relationship graph will be displayed here once implemented.")
+if st.button("Check for Conflict"):
+    if client_name or client_email or client_phone:
+        with st.spinner("Performing conflict check..."):
+            conflict_message, client_details, additional_info = extract_conflict_info(
+                matters_data, 
+                client_name=client_name, 
+                client_email=client_email, 
+                client_phone=client_phone, 
+                faiss_index=faiss_index, 
+                tfidf=tfidf
+            )
+            
+            st.write("### Conflict Check Results:")
+            st.write(conflict_message)
+            
+            if client_details:
+                st.write("#### Client Details:")
+                for key, value in client_details.items():
+                    st.write(f"**{key}:** {value}")
+            
+            if additional_info is not None and not additional_info.empty:
+                st.write("#### Potential Opponents, Direct Opponents, Business Owners, and Acquisition Parties:")
+                st.dataframe(additional_info, width=1000, height=400)
+            else:
+                st.write("No potential opponents, direct opponents, business owners, or acquisition parties identified.")
+    else:
+        st.error("Please enter at least one field (Name, Email, or Phone Number)")
