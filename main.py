@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
-from fuzzywuzzy import fuzz, process  # Import fuzzywuzzy for name matching
+from rapidfuzz import fuzz, process  # Import rapidfuzz instead of fuzzywuzzy
 from anthropic import Anthropic
 import faiss
 import re  # For cleaning special characters
