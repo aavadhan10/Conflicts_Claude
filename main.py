@@ -172,19 +172,10 @@ def load_data_and_create_index():
 
 matters_data, faiss_index, tfidf = load_data_and_create_index()
 
-# Sidebar
-st.sidebar.title("📊 Data Overview")
-
-# Display number of matters worked with
-num_matters = len(data)
-st.sidebar.markdown(f"<h2 style='color: #4CAF50;'>Number of Matters Worked with: {num_matters}</h2>", unsafe_allow_html=True)
-
-# Add a banner or button for data update info
-st.sidebar.markdown(
-    "<div style='background-color: #f0f0f5; padding: 10px; border-radius: 5px; border: 1px solid #ccc;'>"
-    "<strong>Data Updated from Clio API</strong><br>Last Update: <strong>9/14/2024</strong>"
-    "</div>", unsafe_allow_html=True
-)
+# Sidebar for Data Overview
+st.sidebar.header("Data Overview")
+st.sidebar.metric("Number of Matters Worked with", "10059")
+st.sidebar.metric("Data Updated from Clio API", "Last Update: 9/14/2024")
 
 # Main content
 st.title("Scale LLP Conflict Check System with Relationship Graph")
