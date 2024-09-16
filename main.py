@@ -65,7 +65,7 @@ def extract_conflict_info(data, client_name=None, client_email=None, client_phon
             'Phone Number': client_info.get('Primary Phone Number', 'N/A'),
             'Email Address': client_info.get('Primary Email Address', 'N/A')
         }
-        st.write("Debug: Exact client match found")
+        #st.write("Debug: Exact client match found")
     else:
         # If no exact match, proceed with similarity search
         query = client_name or client_email or client_phone
@@ -74,8 +74,8 @@ def extract_conflict_info(data, client_name=None, client_email=None, client_phon
         
         relevant_data = data.iloc[I[0]]
 
-        st.write(f"Debug: Searching for similar clients")
-        st.write(f"Debug: Number of relevant data points: {len(relevant_data)}")
+        #st.write(f"Debug: Searching for similar clients")
+       # st.write(f"Debug: Number of relevant data points: {len(relevant_data)}")
 
         if relevant_data.empty:
             st.write("Debug: No relevant data found")
@@ -88,7 +88,7 @@ def extract_conflict_info(data, client_name=None, client_email=None, client_phon
             relevant_data['Matter Description'].str.contains(query, case=False, na=False)
         ]
         
-        st.write(f"Debug: Number of prior work matches: {len(prior_work)}")
+        #st.write(f"Debug: Number of prior work matches: {len(prior_work)}")
 
         if not prior_work.empty:
             client_info = prior_work.iloc[0]
@@ -99,18 +99,18 @@ def extract_conflict_info(data, client_name=None, client_email=None, client_phon
                 'Phone Number': client_info.get('Primary Phone Number', 'N/A'),
                 'Email Address': client_info.get('Primary Email Address', 'N/A')
             }
-            st.write("Debug: Similar client details found:", client_details)
+            #st.write("Debug: Similar client details found:", client_details)
         else:
             conflict_message = "No direct conflict found with the client."
             client_details = None
-            st.write("Debug: No client details found")
+           # st.write("Debug: No client details found")
 
     # Use the exact match or relevant data for further analysis
     analysis_data = exact_match if not exact_match.empty else relevant_data
 
     # Display the first few rows of analysis_data for debugging
-    st.write("Debug: First few rows of analysis data:")
-    st.write(analysis_data.head().to_string())
+    #st.write("Debug: First few rows of analysis data:")
+    #st.write(analysis_data.head().to_string())
 
     # Analyze for potential opponents and business owners
     messages = [
@@ -139,7 +139,7 @@ Provide your analysis in a structured format that can be easily converted to a t
         st.write("Debug: No response from Claude")
         return conflict_message, client_details, None
 
-    st.write("Debug: Claude's response:", claude_response)
+    #st.write("Debug: Claude's response:", claude_response)
 
     # Parse Claude's response into a structured format
     lines = claude_response.split('\n')
@@ -159,7 +159,7 @@ Provide your analysis in a structured format that can be easily converted to a t
 
     additional_info = pd.DataFrame(parsed_data)
     
-    st.write("Debug: Parsed additional info:", additional_info.to_string())
+    #st.write("Debug: Parsed additional info:", additional_info.to_string())
     
     return conflict_message, client_details, additional_info
 
