@@ -1,15 +1,10 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-#import networkx as nx
-import matplotlib.pyplot as plt
 from sklearn.feature_extraction.text import TfidfVectorizer
 from anthropic import Anthropic
 import faiss
-from pyvis.network import Network
-import streamlit.components.v1 as components
 
-# Initialize Claude client
 def init_anthropic_client():
     claude_api_key = st.secrets["CLAUDE_API_KEY"]
     if not claude_api_key:
@@ -19,7 +14,6 @@ def init_anthropic_client():
 
 client = init_anthropic_client()
 
-# Load and clean data
 def load_and_clean_data(file_path, encoding='utf-8'):
     try:
         data = pd.read_csv(file_path, encoding=encoding)
@@ -29,7 +23,6 @@ def load_and_clean_data(file_path, encoding='utf-8'):
     data.columns = data.columns.str.strip()
     return data
 
-# Call Claude for analysis
 def call_claude(messages):
     try:
         system_message = messages[0]['content']
@@ -46,7 +39,6 @@ def call_claude(messages):
         st.error(f"Error calling Claude: {e}")
         return None
 
-# Create FAISS index for vector search
 def create_vector_index(data):
     tfidf = TfidfVectorizer(stop_words='english')
     tfidf_matrix = tfidf.fit_transform(data['Matter Description'].fillna(''))
@@ -56,18 +48,14 @@ def create_vector_index(data):
     
     return faiss_index, tfidf
 
-# Extract conflict info from data
 def extract_conflict_info(data, client_name=None, client_email=None, client_phone=None, faiss_index=None, tfidf=None):
-    # Ensure case-insensitive comparison and handle empty values
-    if client_name:
-        client_name = client_name.lower()
-    
-    # Check for direct match in the 'Client Name' field
+    # Check for exact matches in any of the provided fields
     exact_match = data[
-        (data['Client Name'].str.lower() == client_name if client_name else False)
+        (data['Client Name'].str.lower() == client_name.lower() if client_name else False) |
+        (data['Primary Email Address'].str.lower() == client_email.lower() if client_email else False) |
+        (data['Primary Phone Number'] == client_phone if client_phone else False)
     ]
     
-    # If an exact match is found, it's considered a conflict
     if not exact_match.empty:
         client_info = exact_match.iloc[0]
         conflict_message = f"Conflict found! Scale LLP has previously worked with this client."
@@ -77,21 +65,30 @@ def extract_conflict_info(data, client_name=None, client_email=None, client_phon
             'Phone Number': client_info.get('Primary Phone Number', 'N/A'),
             'Email Address': client_info.get('Primary Email Address', 'N/A')
         }
-        return conflict_message, client_details, None
-
-    # No exact match, so we proceed with the similarity search
-    query = client_name or client_email or client_phone
-    if query:
+        #st.write("Debug: Exact client match found")
+    else:
+        # If no exact match, proceed with similarity search
+        query = client_name or client_email or client_phone
         query_vec = tfidf.transform([query]).toarray().astype(np.float32)
         _, I = faiss_index.search(query_vec, k=50)
         
         relevant_data = data.iloc[I[0]]
-        
+
+        #st.write(f"Debug: Searching for similar clients")
+       # st.write(f"Debug: Number of relevant data points: {len(relevant_data)}")
+
+        if relevant_data.empty:
+            st.write("Debug: No relevant data found")
+            return None, None, None
+
+        # Check if the firm has worked with a similar client before
         prior_work = relevant_data[
             relevant_data['Client Name'].str.contains(query, case=False, na=False) |
             relevant_data['Matter'].str.contains(query, case=False, na=False) |
             relevant_data['Matter Description'].str.contains(query, case=False, na=False)
         ]
+        
+        #st.write(f"Debug: Number of prior work matches: {len(prior_work)}")
 
         if not prior_work.empty:
             client_info = prior_work.iloc[0]
@@ -102,36 +99,71 @@ def extract_conflict_info(data, client_name=None, client_email=None, client_phon
                 'Phone Number': client_info.get('Primary Phone Number', 'N/A'),
                 'Email Address': client_info.get('Primary Email Address', 'N/A')
             }
-            return conflict_message, client_details, None
+            #st.write("Debug: Similar client details found:", client_details)
+        else:
+            conflict_message = "No direct conflict found with the client."
+            client_details = None
+           # st.write("Debug: No client details found")
+
+    # Use the exact match or relevant data for further analysis
+    analysis_data = exact_match if not exact_match.empty else relevant_data
+
+    # Display the first few rows of analysis_data for debugging
+    #st.write("Debug: First few rows of analysis data:")
+    #st.write(analysis_data.head().to_string())
+
+    # Analyze for potential opponents and business owners
+    messages = [
+        {"role": "system", "content": "You are a legal assistant tasked with identifying potential opponents, business owners, and analyzing matter descriptions related to a client."},
+        {"role": "user", "content": f"""Analyze the following data for the client. Identify:
+1. Direct opponents of the client (look for 'v.', 'vs', or similar indicators in the Matter or Matter Description)
+2. Potential opponents of the client based on the context of the matter
+3. Any mentioned business owners related to the client
+
+For each identified item, provide the following in a structured format:
+- Type: [Direct Opponent], [Potential Opponent], or [Business Owner]
+- Name: [Name of the opponent or business owner]
+- Details: [Relevant details about the opponent or business owner, including the reasoning for potential opponents]
+
+Pay special attention to matter descriptions containing 'v.' or 'vs' and provide a clear recommendation on who the potential opponent client might be in these cases.
+
+Here's the relevant data:
+
+{analysis_data.to_string()}
+
+Provide your analysis in a structured format that can be easily converted to a table."""}
+    ]
+
+    claude_response = call_claude(messages)
+    if not claude_response:
+        st.write("Debug: No response from Claude")
+        return conflict_message, client_details, None
+
+    #st.write("Debug: Claude's response:", claude_response)
+
+    # Parse Claude's response into a structured format
+    lines = claude_response.split('\n')
+    parsed_data = []
+    current_entry = {}
+    for line in lines:
+        if line.startswith('Type:'):
+            if current_entry:
+                parsed_data.append(current_entry)
+            current_entry = {'Type': line.split('Type:')[1].strip()}
+        elif line.startswith('Name:'):
+            current_entry['Name'] = line.split('Name:')[1].strip()
+        elif line.startswith('Details:'):
+            current_entry['Details'] = line.split('Details:')[1].strip()
+    if current_entry:
+        parsed_data.append(current_entry)
+
+    additional_info = pd.DataFrame(parsed_data)
     
-    # No conflicts found
-    conflict_message = "No direct conflict found with the client."
-    return conflict_message, None, None
-
-# Create a relationship graph
-def create_relationship_graph(data, client_name):
-    G = nx.Graph()
-
-    G.add_node(client_name, label=client_name)
-
-    for index, row in data.iterrows():
-        client = row.get('Client Name', '')
-        if client != client_name and client:
-            G.add_node(client, label=client)
-            G.add_edge(client_name, client, label="Worked together on a case")
-
-    return G
-
-# Draw and display relationship graph
-def draw_relationship_graph(graph):
-    net = Network(height="600px", width="100%", notebook=True)
-    net.from_nx(graph)
-    net.show("relationship_graph.html")
+    #st.write("Debug: Parsed additional info:", additional_info.to_string())
     
-    HtmlFile = open("relationship_graph.html", "r", encoding="utf-8")
-    components.html(HtmlFile.read(), height=600)
+    return conflict_message, client_details, additional_info
 
-# Load data and create index
+# Load data and create index (this should be done once and cached)
 @st.cache_resource
 def load_data_and_create_index():
     matters_data = load_and_clean_data('combined_contact_and_matters.csv')
@@ -168,12 +200,7 @@ with col1:
                 )
                 
                 st.write("### Conflict Check Results:")
-                
-                # Display the conflict message in green if a conflict is found
-                if "Conflict found" in conflict_message or "Potential conflict found" in conflict_message:
-                    st.success(conflict_message)
-                else:
-                    st.write(conflict_message)
+                st.write(conflict_message)
                 
                 if client_details:
                     st.write("#### Client Details:")
@@ -192,8 +219,8 @@ with col2:
     if st.button("Create Relationship Graph"):
         if client_name or client_email or client_phone:
             st.write("Creating relationship graph...")
-            graph = create_relationship_graph(matters_data, client_name)
-            draw_relationship_graph(graph)
+            # Add your relationship graph creation logic here
+            st.write("Relationship graph functionality not implemented yet.")
         else:
             st.error("Please enter at least one field (Name, Email, or Phone Number)")
 
