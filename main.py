@@ -25,6 +25,7 @@ def load_and_clean_data(file_path, encoding='utf-8'):
 
 def call_claude(messages):
     try:
+        # Try the newer version method first
         response = client.messages.create(
             model="claude-3-sonnet-20240229",
             max_tokens=1500,
@@ -35,9 +36,19 @@ def call_claude(messages):
             ]
         )
         return response.content[0].text
-    except Exception as e:
-        st.error(f"Error calling Claude: {e}")
-        return None
+    except AttributeError:
+        # If the above fails, try the older version method
+        try:
+            response = client.completions.create(
+                model="claude-2.1",
+                prompt=f"{messages[0]['content']}\n\nHuman: {messages[1]['content']}\n\nAssistant:",
+                max_tokens_to_sample=1500,
+                temperature=0.7
+            )
+            return response.completion
+        except Exception as e:
+            st.error(f"Error calling Claude: {e}")
+            return None
 
 def create_vector_index(data):
     tfidf = TfidfVectorizer(stop_words='english')
