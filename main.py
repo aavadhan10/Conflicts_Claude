@@ -159,7 +159,7 @@ Provide your analysis in a structured format that can be easily converted to a t
     return conflict_message, client_details, additional_info
 
 # Streamlit app layout
-st.title("Rolodex AI: Detailed Conflict Check (Claude 3 Sonnet) - Enhanced Version")
+st.title(" Conflict Checks: Detailed Conflict Check (Claude 3 Sonnet) - Enhanced Version")
 
 # Data Overview Section
 st.header("Data Overview")
