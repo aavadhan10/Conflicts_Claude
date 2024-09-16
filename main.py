@@ -25,16 +25,16 @@ def load_and_clean_data(file_path, encoding='utf-8'):
 
 def call_claude(messages):
     try:
-        response = client.messages.create(
-            model="claude-3-sonnet-20240229",
-            max_tokens=1500,
-            temperature=0.7,
-            messages=[
-                {"role": "system", "content": messages[0]['content']},
-                {"role": "user", "content": messages[1]['content']}
-            ]
+        system_message = messages[0]['content']
+        user_message = messages[1]['content']
+        
+        response = client.completions.create(
+            model="claude-2.1",
+            prompt=f"{system_message}\n\nHuman: {user_message}\n\nAssistant:",
+            max_tokens_to_sample=1500,
+            temperature=0.7
         )
-        return response.content[0].text
+        return response.completion
     except Exception as e:
         st.error(f"Error calling Claude: {e}")
         return None
