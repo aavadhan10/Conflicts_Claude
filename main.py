@@ -189,7 +189,7 @@ default_questions = {
     "Which lawyer should I contact for real estate matters?": "real estate"
 }
 
-user_input = st.text_input("Type your question:", placeholder="e.g., 'Who are the top lawyers for corporate law?'")
+user_input = st.text_input("Type your question:", placeholder="e.g., 'Run a conflict check for your potential client'")
 
 for question, _ in default_questions.items():
     if st.button(question):
