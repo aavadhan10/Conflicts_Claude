@@ -192,7 +192,7 @@ if st.button("Check for Conflict"):
             
                 if additional_info is not None and not additional_info.empty:
                     st.write("#### Potential Opponents, Direct Opponents, Business Owners, and Acquisition Parties:")
-                    st.dataframe(additional_info, width=1000, height=400)
+                    st.table(additional_info)  # Automatically adjusts table size to fit content
             else:
                 st.write("No additional parties or conflicts identified.")
     else:
