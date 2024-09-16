@@ -99,51 +99,54 @@ def extract_conflict_info(data, client_name=None, client_email=None, client_phon
     analysis_data = exact_match if not exact_match.empty else relevant_data
 
     # Analyze for potential opponents, business owners, and acquisition parties
-    messages = [
-        {"role": "system", "content": "You are a legal assistant tasked with identifying potential opponents, business owners, acquisition parties, and analyzing matter descriptions related to a client."},
-        {"role": "user", "content": f"""Analyze the following data for the client. Identify:
-1. Direct opponents of the client (look for 'v.', 'vs', or similar indicators in the Matter or Matter Description)
-2. Potential opponents of the client based on the context of the matter
-3. Any mentioned business owners related to the client
-4. Acquisition parties mentioned in relation to the client or their matters
+    if client_details:
+        messages = [
+            {"role": "system", "content": "You are a legal assistant tasked with identifying potential opponents, business owners, acquisition parties, and analyzing matter descriptions related to a client."},
+            {"role": "user", "content": f"""Analyze the following data for the client. Identify:
+            1. Direct opponents of the client (look for 'v.', 'vs', or similar indicators in the Matter or Matter Description)
+            2. Potential opponents of the client based on the context of the matter
+            3. Any mentioned business owners related to the client
+            4. Acquisition parties mentioned in relation to the client or their matters
 
-For each identified item, provide the following in a structured format:
-- Type: [Direct Opponent], [Potential Opponent], [Business Owner], or [Acquisition Party]
-- Name: [Name of the opponent, business owner, or acquisition party]
-- Details: [Relevant details about the opponent, business owner, or acquisition party, including the reasoning for potential opponents]
+            For each identified item, provide the following in a structured format:
+            - Type: [Direct Opponent], [Potential Opponent], [Business Owner], or [Acquisition Party]
+            - Name: [Name of the opponent, business owner, or acquisition party]
+            - Details: [Relevant details about the opponent, business owner, or acquisition party, including the reasoning for potential opponents]
 
-Pay special attention to matter descriptions containing 'v.' or 'vs', and also look for terms related to acquisitions, mergers, or ownership transitions.
+            Pay special attention to matter descriptions containing 'v.' or 'vs', and also look for terms related to acquisitions, mergers, or ownership transitions.
 
-Here's the relevant data:
+            Here's the relevant data:
 
-{analysis_data.to_string()}
+            {analysis_data.to_string()}
 
-Provide your analysis in a structured format that can be easily converted to a table."""}
-    ]
+            Provide your analysis in a structured format that can be easily converted to a table."""}
+        ]
 
-    claude_response = call_claude(messages)
-    if not claude_response:
-        return conflict_message, client_details, None
+        claude_response = call_claude(messages)
+        if not claude_response:
+            return conflict_message, client_details, None
 
-    # Parse Claude's response into a structured format
-    lines = claude_response.split('\n')
-    parsed_data = []
-    current_entry = {}
-    for line in lines:
-        if line.startswith('Type:'):
-            if current_entry:
-                parsed_data.append(current_entry)
-            current_entry = {'Type': line.split('Type:')[1].strip()}
-        elif line.startswith('Name:'):
-            current_entry['Name'] = line.split('Name:')[1].strip()
-        elif line.startswith('Details:'):
-            current_entry['Details'] = line.split('Details:')[1].strip()
-    if current_entry:
-        parsed_data.append(current_entry)
+        # Parse Claude's response into a structured format
+        lines = claude_response.split('\n')
+        parsed_data = []
+        current_entry = {}
+        for line in lines:
+            if line.startswith('Type:'):
+                if current_entry:
+                    parsed_data.append(current_entry)
+                current_entry = {'Type': line.split('Type:')[1].strip()}
+            elif line.startswith('Name:'):
+                current_entry['Name'] = line.split('Name:')[1].strip()
+            elif line.startswith('Details:'):
+                current_entry['Details'] = line.split('Details:')[1].strip()
+        if current_entry:
+            parsed_data.append(current_entry)
 
-    additional_info = pd.DataFrame(parsed_data)
+        additional_info = pd.DataFrame(parsed_data)
     
-    return conflict_message, client_details, additional_info
+        return conflict_message, client_details, additional_info
+    else:
+        return conflict_message, client_details, None
 
 # Load data and create index (this should be done once and cached)
 @st.cache_resource
@@ -187,10 +190,10 @@ if st.button("Check for Conflict"):
                 for key, value in client_details.items():
                     st.write(f"**{key}:** {value}")
             
-            if additional_info is not None and not additional_info.empty:
-                st.write("#### Potential Opponents, Direct Opponents, Business Owners, and Acquisition Parties:")
-                st.dataframe(additional_info, width=1000, height=400)
+                if additional_info is not None and not additional_info.empty:
+                    st.write("#### Potential Opponents, Direct Opponents, Business Owners, and Acquisition Parties:")
+                    st.dataframe(additional_info, width=1000, height=400)
             else:
-                st.write("No potential opponents, direct opponents, business owners, or acquisition parties identified.")
+                st.write("No additional parties or conflicts identified.")
     else:
         st.error("Please enter at least one field (Name, Email, or Phone Number)")
