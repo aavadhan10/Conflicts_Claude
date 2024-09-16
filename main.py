@@ -173,8 +173,8 @@ def load_data_and_create_index():
 matters_data, faiss_index, tfidf = load_data_and_create_index()
 
 # Sidebar for Data Overview
-st.sidebar.header("Data Overview")
-st.sidebar.metric("Number of Matters Worked with", "10059")
+st.sidebar.header("📊 Data Overview")
+st.sidebar.metric("Number of Matters Worked with", "10,059")
 st.sidebar.metric("Data Updated from Clio API", "Last Update: 9/14/2024")
 
 # Main content
