@@ -48,13 +48,17 @@ def create_vector_index(data):
     
     return faiss_index, tfidf
 
-def extract_conflict_info(data, client_name, faiss_index, tfidf):
-    # First, check for an exact match in the Client Name field
-    exact_match = data[data['Client Name'].str.lower() == client_name.lower()]
+def extract_conflict_info(data, client_name=None, client_email=None, client_phone=None, faiss_index=None, tfidf=None):
+    # Check for exact matches in any of the provided fields
+    exact_match = data[
+        (data['Client Name'].str.lower() == client_name.lower() if client_name else False) |
+        (data['Primary Email Address'].str.lower() == client_email.lower() if client_email else False) |
+        (data['Primary Phone Number'] == client_phone if client_phone else False)
+    ]
     
     if not exact_match.empty:
         client_info = exact_match.iloc[0]
-        conflict_message = f"Conflict found! Scale LLP has previously worked with the client: {client_name}"
+        conflict_message = f"Conflict found! Scale LLP has previously worked with this client."
         client_details = {
             'Client Name': client_info['Client Name'],
             'Matter': client_info['Matter'],
@@ -63,13 +67,14 @@ def extract_conflict_info(data, client_name, faiss_index, tfidf):
         }
         st.write("Debug: Exact client match found")
     else:
-        # If no exact match, proceed with the similarity search
-        query_vec = tfidf.transform([client_name]).toarray().astype(np.float32)
-        _, I = faiss_index.search(query_vec, k=50)  # Increased to 50 for more potential matches
+        # If no exact match, proceed with similarity search
+        query = client_name or client_email or client_phone
+        query_vec = tfidf.transform([query]).toarray().astype(np.float32)
+        _, I = faiss_index.search(query_vec, k=50)
         
         relevant_data = data.iloc[I[0]]
 
-        st.write(f"Debug: Searching for similar clients to: {client_name}")
+        st.write(f"Debug: Searching for similar clients")
         st.write(f"Debug: Number of relevant data points: {len(relevant_data)}")
 
         if relevant_data.empty:
@@ -78,9 +83,9 @@ def extract_conflict_info(data, client_name, faiss_index, tfidf):
 
         # Check if the firm has worked with a similar client before
         prior_work = relevant_data[
-            relevant_data['Client Name'].str.contains(client_name, case=False, na=False) |
-            relevant_data['Matter'].str.contains(client_name, case=False, na=False) |
-            relevant_data['Matter Description'].str.contains(client_name, case=False, na=False)
+            relevant_data['Client Name'].str.contains(query, case=False, na=False) |
+            relevant_data['Matter'].str.contains(query, case=False, na=False) |
+            relevant_data['Matter Description'].str.contains(query, case=False, na=False)
         ]
         
         st.write(f"Debug: Number of prior work matches: {len(prior_work)}")
@@ -110,7 +115,7 @@ def extract_conflict_info(data, client_name, faiss_index, tfidf):
     # Analyze for potential opponents and business owners
     messages = [
         {"role": "system", "content": "You are a legal assistant tasked with identifying potential opponents, business owners, and analyzing matter descriptions related to a client."},
-        {"role": "user", "content": f"""Analyze the following data for the client '{client_name}'. Identify:
+        {"role": "user", "content": f"""Analyze the following data for the client. Identify:
 1. Direct opponents of the client (look for 'v.', 'vs', or similar indicators in the Matter or Matter Description)
 2. Potential opponents of the client based on the context of the matter
 3. Any mentioned business owners related to the client
@@ -158,53 +163,67 @@ Provide your analysis in a structured format that can be easily converted to a t
     
     return conflict_message, client_details, additional_info
 
-# Streamlit app layout
-st.title(" Conflict Checks: Detailed Conflict Check (Claude 3 Sonnet) - Enhanced Version")
+# Load data and create index (this should be done once and cached)
+@st.cache_resource
+def load_data_and_create_index():
+    matters_data = load_and_clean_data('combined_contact_and_matters.csv')
+    faiss_index, tfidf = create_vector_index(matters_data)
+    return matters_data, faiss_index, tfidf
 
-# Data Overview Section
-st.header("Data Overview")
+matters_data, faiss_index, tfidf = load_data_and_create_index()
+
+# Sidebar for Data Overview
+st.sidebar.header("Data Overview")
+st.sidebar.metric("Number of Matters Worked with", "10059")
+st.sidebar.metric("Data Updated from Clio API", "Last Update: 9/14/2024")
+
+# Main content
+st.title("Scale LLP Conflict Check System with Relationship Graph")
+
+# Input fields
+client_name = st.text_input("Enter Client's Full Name")
+client_email = st.text_input("Enter Client's Email")
+client_phone = st.text_input("Enter Client's Phone Number")
+
 col1, col2 = st.columns(2)
 with col1:
-    st.metric("Number of Matters Worked with", "10059")
-with col2:
-    st.metric("Data Updated from Clio API", "Last Update: 9/14/2024")
-
-st.write("---")  # Adds a horizontal line for separation
-
-st.write("Enter a client name to perform a conflict check:")
-
-user_input = st.text_input("Client Name:", placeholder="e.g., 'Land On Top LLC'")
-
-if user_input:
-    progress_bar = st.progress(0)
-    progress_bar.progress(10)
-    matters_data = load_and_clean_data('combined_contact_and_matters.csv')
-    if not matters_data.empty:
-        progress_bar.progress(30)
-        faiss_index, tfidf = create_vector_index(matters_data)
-        progress_bar.progress(50)
-        conflict_message, client_details, additional_info = extract_conflict_info(matters_data, user_input, faiss_index, tfidf)
-        progress_bar.progress(90)
-        
-        st.write("### Conflict Check Results:")
-        st.write(conflict_message)
-        
-        if client_details:
-            st.write("#### Client Details:")
-            for key, value in client_details.items():
-                st.write(f"**{key}:** {value}")
-        
-        if additional_info is not None and not additional_info.empty:
-            st.write("#### Potential Opponents, Direct Opponents, and Business Owners:")
-            st.table(additional_info)
+    if st.button("Check for Conflict"):
+        if client_name or client_email or client_phone:
+            with st.spinner("Performing conflict check..."):
+                conflict_message, client_details, additional_info = extract_conflict_info(
+                    matters_data, 
+                    client_name=client_name, 
+                    client_email=client_email, 
+                    client_phone=client_phone, 
+                    faiss_index=faiss_index, 
+                    tfidf=tfidf
+                )
+                
+                st.write("### Conflict Check Results:")
+                st.write(conflict_message)
+                
+                if client_details:
+                    st.write("#### Client Details:")
+                    for key, value in client_details.items():
+                        st.write(f"**{key}:** {value}")
+                
+                if additional_info is not None and not additional_info.empty:
+                    st.write("#### Potential Opponents, Direct Opponents, and Business Owners:")
+                    st.table(additional_info)
+                else:
+                    st.write("No potential opponents, direct opponents, or business owners identified.")
         else:
-            st.write("No potential opponents, direct opponents, or business owners identified.")
-        
-        progress_bar.progress(100)
-    else:
-        st.error("Failed to load data.")
-    progress_bar.empty()
+            st.error("Please enter at least one field (Name, Email, or Phone Number)")
 
-    # Add a section to display raw data for debugging
-    st.write("### Raw Data (for debugging):")
-    st.write(matters_data[matters_data['Client Name'].str.contains(user_input, case=False, na=False)].head(10))
+with col2:
+    if st.button("Create Relationship Graph"):
+        if client_name or client_email or client_phone:
+            st.write("Creating relationship graph...")
+            # Add your relationship graph creation logic here
+            st.write("Relationship graph functionality not implemented yet.")
+        else:
+            st.error("Please enter at least one field (Name, Email, or Phone Number)")
+
+# Placeholder for relationship graph
+st.header("Relationship Graph")
+st.write("Relationship graph will be displayed here once implemented.")
