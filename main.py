@@ -40,71 +40,63 @@ def call_claude(messages):
         return None
 
 def create_vector_index(data):
-    try:
-        tfidf = TfidfVectorizer(stop_words='english')
-        tfidf_matrix = tfidf.fit_transform(data['Matter Description'].fillna(''))
-        
-        faiss_index = faiss.IndexFlatIP(tfidf_matrix.shape[1])
-        faiss_index.add(np.array(tfidf_matrix.toarray(), dtype=np.float32))
-        
-        return faiss_index, tfidf
-    except Exception as e:
-        st.error(f"Error creating vector index: {e}")
-        return None, None
+    tfidf = TfidfVectorizer(stop_words='english')
+    tfidf_matrix = tfidf.fit_transform(data['Matter Description'].fillna(''))
+    
+    faiss_index = faiss.IndexFlatIP(tfidf_matrix.shape[1])
+    faiss_index.add(np.array(tfidf_matrix.toarray(), dtype=np.float32))
+    
+    return faiss_index, tfidf
 
 def extract_conflict_info(data, client_name, faiss_index, tfidf):
-    try:
-        query_vec = tfidf.transform([client_name]).toarray().astype(np.float32)
-        _, I = faiss_index.search(query_vec, k=5)
-        
-        relevant_data = data.iloc[I[0]]
+    query_vec = tfidf.transform([client_name]).toarray().astype(np.float32)
+    _, I = faiss_index.search(query_vec, k=5)
+    
+    relevant_data = data.iloc[I[0]]
 
-        if relevant_data.empty:
-            return pd.DataFrame(columns=['Client', 'Conflict Type', 'Details'])
-
-        messages = [
-            {"role": "system", "content": "You are a legal assistant tasked with identifying potential conflicts of interest, opponents, and business owners related to a client."},
-            {"role": "user", "content": f"""Analyze the following data for the client '{client_name}'. Identify:
-    1. If the client has worked with the law firm before (indicating a potential conflict)
-    2. Potential opponents of the client (look for 'vs' or similar indicators in the Matter or Matter Description)
-    3. Any mentioned business owners related to the client
-
-    For each identified item, provide the following in a structured format:
-    - Client: The name of the client
-    - Conflict Type: Either 'Prior Work', 'Potential Opponent', or 'Business Owner'
-    - Details: Relevant details about the conflict, opponent, or business owner
-
-    Here's the relevant data:
-
-    {relevant_data.to_string()}
-
-    Provide your analysis in a structured format that can be easily converted to a table."""}
-        ]
-
-        claude_response = call_claude(messages)
-        if not claude_response:
-            return pd.DataFrame(columns=['Client', 'Conflict Type', 'Details'])
-
-        # Parse Claude's response into a structured format
-        lines = claude_response.split('\n')
-        parsed_data = []
-        current_entry = {}
-        for line in lines:
-            if line.startswith('Client:'):
-                if current_entry:
-                    parsed_data.append(current_entry)
-                current_entry = {'Client': line.split('Client:')[1].strip()}
-            elif line.startswith('Conflict Type:'):
-                current_entry['Conflict Type'] = line.split('Conflict Type:')[1].strip()
-            elif line.startswith('Details:'):
-                current_entry['Details'] = line.split('Details:')[1].strip()
-        if current_entry:
-            parsed_data.append(current_entry)
-
-        return pd.DataFrame(parsed_data)
-    except Exception as e:
-        st.error(f"Error extracting conflict info: {e}")
+    if relevant_data.empty:
         return pd.DataFrame(columns=['Client', 'Conflict Type', 'Details'])
+
+    messages = [
+        {"role": "system", "content": "You are a legal assistant tasked with identifying potential conflicts of interest, opponents, and business owners related to a client."},
+        {"role": "user", "content": f"""Analyze the following data for the client '{client_name}'. Identify:
+1. If the client has worked with the law firm before (indicating a potential conflict)
+2. Potential opponents of the client (look for 'vs' or similar indicators in the Matter or Matter Description)
+3. Any mentioned business owners related to the client
+
+For each identified item, provide the following in a structured format:
+- Client: The name of the client
+- Conflict Type: Either 'Prior Work', 'Potential Opponent', or 'Business Owner'
+- Details: Relevant details about the conflict, opponent, or business owner
+
+Here's the relevant data:
+
+{relevant_data.to_string()}
+
+Provide your analysis in a structured format that can be easily converted to a table."""}
+    ]
+
+    claude_response = call_claude(messages)
+    if not claude_response:
+        return pd.DataFrame(columns=['Client', 'Conflict Type', 'Details'])
+
+    # Parse Claude's response into a structured format
+    lines = claude_response.split('\n')
+    parsed_data = []
+    current_entry = {}
+    for line in lines:
+        if line.startswith('Client:'):
+            if current_entry:
+                parsed_data.append(current_entry)
+            current_entry = {'Client': line.split('Client:')[1].strip()}
+        elif line.startswith('Conflict Type:'):
+            current_entry['Conflict Type'] = line.split('Conflict Type:')[1].strip()
+        elif line.startswith('Details:'):
+            current_entry['Details'] = line.split('Details:')[1].strip()
+    if current_entry:
+        parsed_data.append(current_entry)
+
+    return pd.DataFrame(parsed_data)
 
 # Streamlit app layout
 st.title("Rolodex AI: Structured Conflict Check (Claude 3 Sonnet)")
@@ -130,18 +122,15 @@ if user_input:
     if not matters_data.empty:
         progress_bar.progress(30)
         faiss_index, tfidf = create_vector_index(matters_data)
-        if faiss_index is not None and tfidf is not None:
-            progress_bar.progress(50)
-            conflict_df = extract_conflict_info(matters_data, user_input, faiss_index, tfidf)
-            progress_bar.progress(90)
-            st.write("### Conflict Check Results:")
-            if not conflict_df.empty:
-                st.table(conflict_df)
-            else:
-                st.write("No potential conflicts or relevant information found.")
-            progress_bar.progress(100)
+        progress_bar.progress(50)
+        conflict_df = extract_conflict_info(matters_data, user_input, faiss_index, tfidf)
+        progress_bar.progress(90)
+        st.write("### Conflict Check Results:")
+        if not conflict_df.empty:
+            st.table(conflict_df)
         else:
-            st.error("Failed to create vector index. Please check your FAISS installation.")
+            st.write("No potential conflicts or relevant information found.")
+        progress_bar.progress(100)
     else:
         st.error("Failed to load data.")
     progress_bar.empty()
