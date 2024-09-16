@@ -50,40 +50,59 @@ def create_vector_index(data):
 
 def extract_conflict_info(data, client_name, faiss_index, tfidf):
     query_vec = tfidf.transform([client_name]).toarray().astype(np.float32)
-    _, I = faiss_index.search(query_vec, k=10)  # Increased to 10 for more potential matches
+    _, I = faiss_index.search(query_vec, k=50)  # Increased to 50 for more potential matches
     
     relevant_data = data.iloc[I[0]]
 
+    st.write(f"Debug: Searching for client: {client_name}")
+    st.write(f"Debug: Number of relevant data points: {len(relevant_data)}")
+
     if relevant_data.empty:
+        st.write("Debug: No relevant data found")
         return None, None, None
 
     # Check if the firm has worked with the client before
-    prior_work = relevant_data[relevant_data['Client Name'].str.contains(client_name, case=False, na=False)]
+    prior_work = relevant_data[
+        relevant_data['Client Name'].str.contains(client_name, case=False, na=False) |
+        relevant_data['Matter'].str.contains(client_name, case=False, na=False) |
+        relevant_data['Matter Description'].str.contains(client_name, case=False, na=False)
+    ]
     
+    st.write(f"Debug: Number of prior work matches: {len(prior_work)}")
+
     if not prior_work.empty:
         client_info = prior_work.iloc[0]
         conflict_message = f"Conflict found! Scale LLP has previously worked with the client."
         client_details = {
             'Client Name': client_info['Client Name'],
             'Matter': client_info['Matter'],
-            'Phone Number': client_info['Primary Phone Number'],
-            'Email Address': client_info['Primary Email Address']
+            'Phone Number': client_info.get('Primary Phone Number', 'N/A'),
+            'Email Address': client_info.get('Primary Email Address', 'N/A')
         }
+        st.write("Debug: Client details found:", client_details)
     else:
         conflict_message = "No direct conflict found with the client."
         client_details = None
+        st.write("Debug: No client details found")
+
+    # Display the first few rows of relevant_data for debugging
+    st.write("Debug: First few rows of relevant data:")
+    st.write(relevant_data.head().to_string())
 
     # Analyze for potential opponents and business owners
     messages = [
-        {"role": "system", "content": "You are a legal assistant tasked with identifying potential opponents and business owners related to a client."},
+        {"role": "system", "content": "You are a legal assistant tasked with identifying potential opponents, business owners, and analyzing matter descriptions related to a client."},
         {"role": "user", "content": f"""Analyze the following data for the client '{client_name}'. Identify:
-1. Potential opponents of the client (look for 'vs' or similar indicators in the Matter or Matter Description)
-2. Any mentioned business owners related to the client
+1. Direct opponents of the client (look for 'v.', 'vs', or similar indicators in the Matter or Matter Description)
+2. Potential opponents of the client based on the context of the matter
+3. Any mentioned business owners related to the client
 
 For each identified item, provide the following in a structured format:
-- Type: [Potential Opponent] or [Business Owner]
+- Type: [Direct Opponent], [Potential Opponent], or [Business Owner]
 - Name: [Name of the opponent or business owner]
-- Details: [Relevant details about the opponent or business owner]
+- Details: [Relevant details about the opponent or business owner, including the reasoning for potential opponents]
+
+Pay special attention to matter descriptions containing 'v.' or 'vs' and provide a clear recommendation on who the potential opponent client might be in these cases.
 
 Here's the relevant data:
 
@@ -94,7 +113,10 @@ Provide your analysis in a structured format that can be easily converted to a t
 
     claude_response = call_claude(messages)
     if not claude_response:
+        st.write("Debug: No response from Claude")
         return conflict_message, client_details, None
+
+    st.write("Debug: Claude's response:", claude_response)
 
     # Parse Claude's response into a structured format
     lines = claude_response.split('\n')
@@ -114,10 +136,12 @@ Provide your analysis in a structured format that can be easily converted to a t
 
     additional_info = pd.DataFrame(parsed_data)
     
+    st.write("Debug: Parsed additional info:", additional_info.to_string())
+    
     return conflict_message, client_details, additional_info
 
 # Streamlit app layout
-st.title("Rolodex AI: Detailed Conflict Check (Claude 3 Sonnet)")
+st.title("Rolodex AI: Detailed Conflict Check (Claude 3 Sonnet) - Enhanced Version")
 
 # Data Overview Section
 st.header("Data Overview")
@@ -131,7 +155,7 @@ st.write("---")  # Adds a horizontal line for separation
 
 st.write("Enter a client name to perform a conflict check:")
 
-user_input = st.text_input("Client Name:", placeholder="e.g., 'Scale LLP'")
+user_input = st.text_input("Client Name:", placeholder="e.g., 'Thomas Adams'")
 
 if user_input:
     progress_bar = st.progress(0)
@@ -153,12 +177,16 @@ if user_input:
                 st.write(f"**{key}:** {value}")
         
         if additional_info is not None and not additional_info.empty:
-            st.write("#### Potential Opponents and Business Owners:")
+            st.write("#### Potential Opponents, Direct Opponents, and Business Owners:")
             st.table(additional_info)
         else:
-            st.write("No potential opponents or business owners identified.")
+            st.write("No potential opponents, direct opponents, or business owners identified.")
         
         progress_bar.progress(100)
     else:
         st.error("Failed to load data.")
     progress_bar.empty()
+
+    # Add a section to display raw data for debugging
+    st.write("### Raw Data (for debugging):")
+    st.write(matters_data[matters_data['Client Name'].str.contains(user_input, case=False, na=False)].head(10))
